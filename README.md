@@ -1,4 +1,4 @@
-# Arista-style Plant Telemetry — Step 1: MQTT Pipeline
+# Industrial IoT OEE Pipeline — Step 1: MQTT Pipeline
 
 Industrial IoT data pipeline for a bitumen/membrane manufacturing plant.
 Machine telemetry flows through a real pub/sub path instead of shared
@@ -59,3 +59,9 @@ Stop: Ctrl+C, or `docker compose down`.
 - bronze-writer writes objects instead of local files
 - silver ETL rewired to read the partitioned archive, typed timestamps,
   dedup on event_id, MERGE/idempotent writes
+
+## Copyright
+
+Copyright © 2026 Rahul Yadav. All rights reserved.
+
+This repository is published for portfolio and educational reference purposes. The source code may not be copied, modified, redistributed, or used commercially without the author's explicit permission.
