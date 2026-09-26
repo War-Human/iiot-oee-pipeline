@@ -1,0 +1,94 @@
+services:
+  # ------------------------------------------------------------------
+  # The post office. Machines publish to it; consumers subscribe to it.
+  # Nobody shares folders anymore -- the network is the only link.
+  # ------------------------------------------------------------------
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: mosquitto
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+
+    networks:
+      - factory-net
+
+  # ------------------------------------------------------------------
+  # The machine floor: emits telemetry. It now PUBLISHES to the broker
+  # and does not know (or care) who reads it.
+  # ------------------------------------------------------------------
+  machine-floor:
+    build: ./machine-floor
+    container_name: machine-floor
+    command: ["--interval", "5", "--output", "mqtt", "--mqtt-host", "mosquitto"]
+    networks:
+      - factory-net
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+
+  # ------------------------------------------------------------------
+  # The bronze writer: subscribes to the broker, appends raw messages
+  # (plus landing metadata) to date/hour-partitioned files.
+  # ------------------------------------------------------------------
+  bronze-writer:
+    build: ./bronze-writer
+    container_name: bronze-writer
+    volumes:
+      - ./data/raw:/data/raw
+    networks:
+      - factory-net
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+
+  # ------------------------------------------------------------------
+  # PARKED until Step 2: the silver ETL will be rewired to read the
+  # partitioned bronze archive instead of one flat file. Left here so
+  # the target architecture is visible.
+  
+  # Step 2:
+  
+  # The silver ETL: reads the partitioned bronze archive incrementally
+  # (tracks its own watermark, never re-reads what it already cleaned),
+  # cleans it, and writes a matching partitioned silver layer.
+  # ------------------------------------------------------------------
+  silver-etl:
+    build: ./silver-etl
+    container_name: silver-etl
+    command: ["--input-root", "raw", "--output-root", "silver", "--interval", "20"]
+    volumes:
+      - ./data/raw:/app/raw
+      - ./data/silver:/app/silver
+    networks:
+      - factory-net
+    restart: unless-stopped
+    depends_on:
+      - bronze-writer
+
+  # ------------------------------------------------------------------
+  # The gold ETL: aggregates silver into per-machine, per-hour KPI
+  # rows (Availability%, Performance%, productivity). Recomputes only
+  # the hour-partitions whose silver file has actually changed.
+  # Quality%/OEE are intentionally left null -- no data source exists
+  # yet for rejects/scrap or material waste.
+  # ------------------------------------------------------------------
+  gold-etl:
+    build: ./gold-etl
+    container_name: gold-etl
+    command: ["--input-root", "silver", "--output-root", "gold", "--interval", "60"]
+    volumes:
+      - ./data/silver:/app/silver
+      - ./data/gold:/app/gold
+    networks:
+      - factory-net
+    restart: unless-stopped
+    depends_on:
+      - silver-etl
+
+networks:
+  factory-net:
+    driver: bridge
+
+volumes:
+  mosquitto-data:

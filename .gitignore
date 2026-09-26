@@ -1,0 +1,10 @@
+data/raw/*
+!data/raw/.gitkeep
+data/silver/*
+!data/silver/.gitkeep
+data/gold/*
+!data/gold/.gitkeep
+__pycache__/
+*.pyc
+.venv/
+tests/snapshots/
