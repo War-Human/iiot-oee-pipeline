@@ -1,4 +1,4 @@
-# How to Test Your Arista Project — Step by Step
+# How to Test this Project — Step by Step
 
 **Faster option:** once you're comfortable with what each test checks
 (read below at least once), you can run any single test in full
@@ -12,7 +12,7 @@ This resets everything to a clean state before each test, so results
 never get mixed up with leftovers from a previous run. The manual
 steps below still matter for understanding *why* each check exists.
 
-There are also two fast unit tests that need no Docker at all — see
+Two fast unit tests need no Docker at all — see
 the "UNIT TESTS" section near the bottom. Run those first; they take
 under a second combined.
 
@@ -79,7 +79,7 @@ something like "Up X seconds". If any row says "Exited" or
 
        docker exec mosquitto mosquitto_pub -t "factory/CM-01/telemetry" -m "not valid json {{{"
 
-2. Wait 5 seconds, then check nothing crashed:
+2. Wait 5 seconds, then check that nothing crashed:
 
        docker compose logs bronze-writer --tail 10
 
@@ -94,7 +94,7 @@ something like "Up X seconds". If any row says "Exited" or
 
        docker compose stop bronze-writer
 
-2. While it's stopped, send 3 clearly-labeled test messages. Use this
+2. While it's stopped, send 3 clearly labeled test messages. Use this
    exact piped format — it avoids a Windows quoting bug that can
    silently corrupt the JSON:
 
@@ -102,7 +102,7 @@ something like "Up X seconds". If any row says "Exited" or
        '{"machine_id":"TEST","event_id":"mytest-2"}' | docker exec -i mosquitto mosquitto_pub -t "factory/CM-01/telemetry" -q 1 -l
        '{"machine_id":"TEST","event_id":"mytest-3"}' | docker exec -i mosquitto mosquitto_pub -t "factory/CM-01/telemetry" -q 1 -l
 
-   Each command should run silently with no error.
+   Each command should run silently with no errors.
 3. Start the writer again:
 
        docker compose start bronze-writer
@@ -129,7 +129,7 @@ something like "Up X seconds". If any row says "Exited" or
 4. Run the checker, note the "Total messages recorded" number.
 5. Wait another 30 seconds, run it again.
 
-   **PASS:** the total went UP between the two runs — proves everything
+   **PASS:** The total went UP between the two runs — proves everything
    reconnected on its own. (`docker compose logs machine-floor` may
    still show stale "publish failed" warnings even after it's actually
    recovered — that's a known cosmetic logging delay, not a real
@@ -137,7 +137,7 @@ something like "Up X seconds". If any row says "Exited" or
 
 ---
 
-## TEST 5 — Does it stay stable if you just leave it running?
+## TEST 5 — Does it stay stable if you leave it running?
 
 1. Leave everything running, untouched, for 15 minutes.
 2. `docker compose ps` — all FIVE containers should still say "Up",
@@ -186,7 +186,7 @@ something like "Up X seconds". If any row says "Exited" or
 
        py tests\verify_silver.py
 
-   **PASS:** reconciliation still PASSes — silver caught up on
+   **PASS:** reconciliation still passes — silver caught up on
    everything bronze collected while it was down, nothing lost,
    nothing duplicated.
 
@@ -221,7 +221,7 @@ something like "Up X seconds". If any row says "Exited" or
 ## UNIT TESTS — Fast logic checks (no Docker needed)
 
 Run these any time you change `clean_to_silver.py` or `build_gold.py`,
-or just to sanity check the math in under a second:
+or to sanity-check the math in under a second:
 
     py tests\test_silver_logic.py
     py tests\test_gold_logic.py
@@ -249,7 +249,7 @@ broker's saved session data.
 
 | Date       | Unit-S | Unit-G | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | Notes |
 |------------|--------|--------|---|---|---|---|---|---|---|---|-------|
-| 2026-09-22 | PASS   | —      | PASS | PASS | PASS | PASS | PASS | PASS | PASS | — | First full run after the bronze-writer session-persistence fix and the silver-etl rebuild. All 4 containers running at the time (gold-etl didn't exist yet). |
+| 2026-09-22 | PASS   | —      | PASS | PASS | PASS | PASS | PASS | PASS | PASS | — | First full run after the bronze-writer session-persistence fix and the silver-etl rebuild. All 4 containers were running at the time (gold-etl didn't exist yet). |
 |            |        |        |   |   |   |   |   |   |   |   |       |
 
 ("Unit-S" = test_silver_logic.py, "Unit-G" = test_gold_logic.py)
