@@ -1,0 +1,211 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "IIoT Telemetry Data Flow",
+    "subtitle": "Machine telemetry from MQTT ingestion to business-ready KPI summaries",
+    "output": "docs/archify/iiot-oee.dataflow.html",
+    "animation": "trace",
+    "visual_preset": "blueprint",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/War-Human/iiot-oee-pipeline",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "38e6f79c5a888d560abf8aec96d50b58b8c7c2b2"
+    }
+  },
+  "stages": [
+    {
+      "label": "Source"
+    },
+    {
+      "label": "Ingestion"
+    },
+    {
+      "label": "Raw"
+    },
+    {
+      "label": "Clean"
+    },
+    {
+      "label": "KPI"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "machine",
+      "type": "external",
+      "label": "Machine Telemetry",
+      "sublabel": "temperature · RPM · status · batch",
+      "stage": 0,
+      "row": 0,
+      "sources": [
+        {
+          "path": "machine-floor/machine_telemetry_simulator.py",
+          "label": "simulator"
+        }
+      ]
+    },
+    {
+      "id": "mqtt",
+      "type": "messagebus",
+      "label": "MQTT Broker",
+      "sublabel": "factory/<machine>/telemetry",
+      "stage": 1,
+      "row": 0,
+      "sources": [
+        {
+          "path": "mosquitto/config/mosquitto.conf",
+          "label": "broker"
+        }
+      ]
+    },
+    {
+      "id": "bronze_writer",
+      "type": "backend",
+      "label": "Bronze Writer",
+      "sublabel": "raw envelope + ingest metadata",
+      "stage": 1,
+      "row": 1,
+      "sources": [
+        {
+          "path": "bronze-writer/bronze_writer.py",
+          "label": "writer"
+        }
+      ]
+    },
+    {
+      "id": "bronze",
+      "type": "database",
+      "label": "Bronze JSONL",
+      "sublabel": "date/hour partitions · append-only",
+      "stage": 2,
+      "row": 0
+    },
+    {
+      "id": "silver_etl",
+      "type": "backend",
+      "label": "Silver ETL",
+      "sublabel": "watermark · dedup · range checks · DQ",
+      "stage": 3,
+      "row": 0,
+      "sources": [
+        {
+          "path": "silver-etl/clean_to_silver.py",
+          "label": "cleaning"
+        }
+      ]
+    },
+    {
+      "id": "silver",
+      "type": "database",
+      "label": "Silver JSONL",
+      "sublabel": "clean records + rejects",
+      "stage": 3,
+      "row": 1
+    },
+    {
+      "id": "gold_etl",
+      "type": "backend",
+      "label": "Gold ETL",
+      "sublabel": "availability + performance aggregation",
+      "stage": 4,
+      "row": 0,
+      "sources": [
+        {
+          "path": "gold-etl/build_gold.py",
+          "label": "KPI builder"
+        }
+      ]
+    },
+    {
+      "id": "gold",
+      "type": "database",
+      "label": "Gold KPI Summary",
+      "sublabel": "machine × hour",
+      "stage": 4,
+      "row": 1
+    }
+  ],
+  "flows": [
+    {
+      "id": "f1",
+      "from": "machine",
+      "to": "mqtt",
+      "label": "publish telemetry",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f2",
+      "from": "mqtt",
+      "to": "bronze_writer",
+      "label": "subscribe · QoS 1",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f3",
+      "from": "bronze_writer",
+      "to": "bronze",
+      "label": "append raw payload",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f4",
+      "from": "bronze",
+      "to": "silver_etl",
+      "label": "new bronze bytes",
+      "variant": "default"
+    },
+    {
+      "id": "f5",
+      "from": "silver_etl",
+      "to": "silver",
+      "label": "clean + flag + reject",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f6",
+      "from": "silver",
+      "to": "gold_etl",
+      "label": "changed partitions",
+      "variant": "default"
+    },
+    {
+      "id": "f7",
+      "from": "gold_etl",
+      "to": "gold",
+      "label": "KPI rows",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Raw-first design",
+      "items": [
+        "Bronze keeps the payload as received",
+        "Landing metadata records ingest time and event identity",
+        "Malformed payloads are retained and flagged"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Cleaning and lineage",
+      "items": [
+        "Silver reads incrementally using watermarks",
+        "Duplicate event IDs are removed within each processing batch",
+        "Machine-type bounds and data-quality flags make cleaning explicit"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "KPI boundary",
+      "items": [
+        "Availability and Performance are calculated in Gold",
+        "Quality, Wastage, and full OEE remain unavailable until source data exists",
+        "This keeps the current KPI output honest"
+      ]
+    }
+  ]
+}
