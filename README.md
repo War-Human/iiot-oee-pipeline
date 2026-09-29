@@ -6,20 +6,103 @@ folders.
 
 ## Architecture
 
-    machine-floor (simulator)  --MQTT publish-->  mosquitto (broker)
-                                                        |
-                                                        | subscribe
-                                                        v
-                                              bronze-writer
-                                              -> data/raw/date=.../hour=.../bronze.jsonl
-
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                         MACHINE FLOOR                               │
+│                                                                     │
+│  Machine 1       Machine 2       Machine 3       Machine 4          │
+│  Colloid Mill    Colloid Mill    Kettle          Mixer              │
+│       │               │             │               │               │ =>> machine_telemetry_simulator.py
+│       └───────────────┴─────────────┴───────────────┘               │
+│                              │                                      │
+│                         MQTT Publish                                │
+│                    factory/<machine>/telemetry                      │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │     MOSQUITTO       │
+                    │    MQTT BROKER      │
+                    │                     │
+                    │      QoS 1          │
+                    └──────────┬──────────┘
+                               │
+                               │ Subscribe
+                               ▼
+                    ┌─────────────────────┐
+                    │    BRONZE WRITER    │
+                    │ MQTT → JSONL        │
+                    │ Add ingest_ts       │ =>> bronze_writer.py
+                    │ Preserve event_id   │
+                    │ Preserve raw data   │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+              ┌────────────────────────────────┐
+              │          BRONZE LAYER          │
+              │                                │
+              │ data/raw/                      │
+              │   date=YYYY-MM-DD/             │
+              │      hour=HH/                  │
+              │         bronze.jsonl           │
+              │                                │
+              │ Raw / append-only              │
+              └────────────────┬───────────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │      SILVER ETL     │
+                    │                     │
+                    │ • Watermark         │
+                    │ • Deduplication     │
+                    │ • Validation        │   =>> clean_to_silver.py
+                    │ • DQ flags          │
+                    │ • Forward filling   │
+                    │ • Reject handling   │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+              ┌────────────────────────────────┐
+              │          SILVER LAYER          │
+              │                                │
+              │ cleaned telemetry              │
+              │ data-quality flags             │
+              │ rejects                        │
+              └────────────────┬───────────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │       GOLD ETL      │
+                    │                     │
+                    │ • Availability      │ =>> build_gold.py
+                    │ • Performance       │
+                    │ • Cycle time        │
+                    │ • Batch counts      │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+              ┌────────────────────────────────┐
+              │          GOLD LAYER            │
+              │                                │
+              │ machine × date × hour         │
+              │                                │
+              │ Availability %                 │
+              │ Performance %                 │
+              │ Batches completed              │
+              │ Avg cycle time                 │
+              │                                │
+              │ Quality % → NULL               │
+              │ OEE %     → NULL               │
+              └────────────────────────────────┘
+```    
+    
 - **machine-floor**: simulates 4 machines (colloid mills, kettle, mixer).
   Each reading carries an `event_id`. Publishes to
   `factory/<machine_id>/telemetry`, QoS 1. Does not know who consumes it.
 - **mosquitto**: the post office. eclipse-mosquitto, local-dev config
   (anonymous, no persistence). Production: auth + TLS on 8883.
 - **bronze-writer**: appends every message AS RECEIVED to partitioned
-  bronze files, adding only landing metadata (`ingest_ts`, and an
+  bronze files, adding only landing metadata (`ingest_ts` and an
   `event_id` if the sender omitted one). Malformed payloads are kept
   and flagged, never dropped.
 
