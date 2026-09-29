@@ -1,0 +1,304 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Industrial IoT OEE Pipeline",
+    "subtitle": "MQTT telemetry ingestion → Bronze → Silver → Gold KPI pipeline",
+    "output": "docs/archify/iiot-oee.architecture.html",
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/War-Human/iiot-oee-pipeline",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "38e6f79c5a888d560abf8aec96d50b58b8c7c2b2"
+    }
+  },
+  "components": [
+    {
+      "id": "machine_floor",
+      "type": "external",
+      "label": "Machine Floor Simulator",
+      "sublabel": "4 machines · telemetry · batch events",
+      "tag": "source",
+      "pos": [
+        40,
+        220
+      ],
+      "size": [
+        190,
+        70
+      ],
+      "sources": [
+        {
+          "path": "machine-floor/machine_telemetry_simulator.py",
+          "label": "telemetry generator"
+        }
+      ]
+    },
+    {
+      "id": "mqtt",
+      "type": "messagebus",
+      "label": "Mosquitto MQTT Broker",
+      "sublabel": "pub/sub · QoS 1 · persistent broker",
+      "tag": "transport",
+      "pos": [
+        280,
+        220
+      ],
+      "size": [
+        190,
+        70
+      ],
+      "sources": [
+        {
+          "path": "mosquitto/config/mosquitto.conf",
+          "label": "broker config"
+        }
+      ]
+    },
+    {
+      "id": "bronze_writer",
+      "type": "backend",
+      "label": "Bronze Writer",
+      "sublabel": "subscribe · preserve raw payload · landing metadata",
+      "tag": "ingestion",
+      "pos": [
+        520,
+        220
+      ],
+      "size": [
+        220,
+        70
+      ],
+      "sources": [
+        {
+          "path": "bronze-writer/bronze_writer.py",
+          "label": "MQTT subscriber"
+        }
+      ]
+    },
+    {
+      "id": "bronze",
+      "type": "database",
+      "label": "Bronze Layer",
+      "sublabel": "date/hour partitioned JSONL · append-only",
+      "tag": "raw",
+      "pos": [
+        800,
+        220
+      ],
+      "size": [
+        190,
+        70
+      ]
+    },
+    {
+      "id": "silver_etl",
+      "type": "backend",
+      "label": "Silver ETL",
+      "sublabel": "watermark · dedup · validation · DQ flags",
+      "tag": "cleaning",
+      "pos": [
+        1030,
+        220
+      ],
+      "size": [
+        210,
+        70
+      ],
+      "sources": [
+        {
+          "path": "silver-etl/clean_to_silver.py",
+          "label": "cleaning logic"
+        }
+      ]
+    },
+    {
+      "id": "silver",
+      "type": "database",
+      "label": "Silver Layer",
+      "sublabel": "cleaned telemetry · rejects · partitioned JSONL",
+      "tag": "clean",
+      "pos": [
+        1290,
+        220
+      ],
+      "size": [
+        190,
+        70
+      ]
+    },
+    {
+      "id": "gold_etl",
+      "type": "backend",
+      "label": "Gold ETL",
+      "sublabel": "availability · performance · productivity KPIs",
+      "tag": "aggregation",
+      "pos": [
+        1030,
+        390
+      ],
+      "size": [
+        210,
+        70
+      ],
+      "sources": [
+        {
+          "path": "gold-etl/build_gold.py",
+          "label": "KPI aggregation"
+        }
+      ]
+    },
+    {
+      "id": "gold",
+      "type": "database",
+      "label": "Gold KPI Layer",
+      "sublabel": "per-machine · per-hour KPI summary",
+      "tag": "business-ready",
+      "pos": [
+        1290,
+        390
+      ],
+      "size": [
+        190,
+        70
+      ]
+    },
+    {
+      "id": "analytics_boundary",
+      "type": "external",
+      "label": "Analytics / OEE Consumer",
+      "sublabel": "future dashboard or downstream consumer",
+      "tag": "next layer",
+      "pos": [
+        1530,
+        390
+      ],
+      "size": [
+        210,
+        70
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Industrial IoT Data Pipeline",
+      "wraps": [
+        "mqtt",
+        "bronze_writer",
+        "bronze",
+        "silver_etl",
+        "silver",
+        "gold_etl",
+        "gold"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "Pipeline processing boundary",
+      "wraps": [
+        "bronze_writer",
+        "silver_etl",
+        "gold_etl"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "machine-mqtt",
+      "from": "machine_floor",
+      "to": "mqtt",
+      "label": "MQTT publish",
+      "variant": "emphasis"
+    },
+    {
+      "id": "mqtt-bronze",
+      "from": "mqtt",
+      "to": "bronze_writer",
+      "label": "subscribe · QoS 1",
+      "variant": "emphasis"
+    },
+    {
+      "id": "writer-bronze",
+      "from": "bronze_writer",
+      "to": "bronze",
+      "label": "append raw envelope",
+      "variant": "emphasis"
+    },
+    {
+      "id": "bronze-silver",
+      "from": "bronze",
+      "to": "silver_etl",
+      "label": "new bytes · watermark",
+      "variant": "default"
+    },
+    {
+      "id": "silver-output",
+      "from": "silver_etl",
+      "to": "silver",
+      "label": "cleaned + DQ flags",
+      "variant": "emphasis"
+    },
+    {
+      "id": "silver-gold",
+      "from": "silver",
+      "to": "gold_etl",
+      "label": "partition changes",
+      "variant": "default"
+    },
+    {
+      "id": "gold-output",
+      "from": "gold_etl",
+      "to": "gold",
+      "label": "KPI summary",
+      "variant": "emphasis"
+    },
+    {
+      "id": "gold-consumer",
+      "from": "gold",
+      "to": "analytics_boundary",
+      "label": "downstream analytics",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Reliable ingestion boundary",
+      "items": [
+        "MQTT decouples producers from consumers",
+        "QoS 1 supports at-least-once delivery",
+        "event_id enables downstream idempotency/deduplication"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Data-quality contract",
+      "items": [
+        "Bronze preserves malformed payloads instead of dropping them",
+        "Silver applies machine-type bounds, forward-fill where possible, and DQ flags",
+        "Rejects remain separately traceable"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Honest OEE scope",
+      "items": [
+        "Availability and Performance are currently computed",
+        "Quality and Wastage are intentionally null because reject/scrap data is not present",
+        "A full OEE percentage is therefore not fabricated"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Current boundary",
+      "items": [
+        "The repository currently stops at Gold KPI output",
+        "Dashboard/consumer integration is a downstream extension, not represented as an implemented service"
+      ]
+    }
+  ]
+}
